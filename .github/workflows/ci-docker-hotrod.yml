@@ -18,6 +18,15 @@ permissions:
 jobs:
   hotrod:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - name: v1
+          binary: all-in-one
+        - name: v2
+          binary: jaeger
+
     steps:
     - uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7 # v2.10.1
       with:
