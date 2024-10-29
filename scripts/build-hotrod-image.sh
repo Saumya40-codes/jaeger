@@ -6,37 +6,49 @@
 set -euf -o pipefail
 
 print_help() {
-  echo "Usage: $0 [-h] [-l] [-o] [-p platforms]"
+  echo "Usage: $0 [-h] [-l] [-o] [-p platforms] [-v jaeger_version]"
   echo "-h: Print help"
   echo "-l: Enable local-only mode that only pushes images to local registry"
   echo "-o: overwrite image in the target remote repository even if the semver tag already exists"
   echo "-p: Comma-separated list of platforms to build for (default: all supported)"
+  echo "-v: Jaeger version to use (v1 or v2, default: v1)"
   exit 1
 }
 
 docker_compose_file="./examples/hotrod/docker-compose.yml"
 platforms="$(make echo-linux-platforms)"
 current_platform="$(go env GOOS)/$(go env GOARCH)"
+jaeger_version="v1"
 FLAGS=()
 success="false"
 
 while getopts "hlop:" opt; do
-	case "${opt}" in
-	l)
-		# in the local-only mode the images will only be pushed to local registry
+  case "${opt}" in
+  l)
+    # in the local-only mode the images will only be pushed to local registry
     FLAGS=("${FLAGS[@]}" -l)
-		;;
-	o)
-		FLAGS=("${FLAGS[@]}" -o)
-		;;
-	p)
-		platforms=${OPTARG}
-		;;
-	*)
-		print_help
-		;;
-	esac
+    ;;
+  o)
+    FLAGS=("${FLAGS[@]}" -o)
+    ;;
+  p)
+    platforms=${OPTARG}
+    ;;
+  v)
+    jaeger_version=${OPTARG}
+    ;;
+  *)
+    print_help
+    ;;
+  esac
 done
+
+if [[ "$jaeger_version" != "v1" && "$jaeger_version" != "v2" ]]; then
+  echo "Invalid Jaeger version provided: $jaeger_version"
+  print_help
+elif [[ "$jaeger_version" == "v2" ]]; then
+  docker_compose_file="./examples/hotrod/docker-compose-v2.yml"
+fi
 
 set -x
 
@@ -62,9 +74,9 @@ make create-baseimg LINUX_PLATFORMS="$platforms"
 # Build hotrod binary for each target platform (separated by commas)
 for platform in $(echo "$platforms" | tr ',' ' '); do
   # Extract the operating system from the platform string
-  os=${platform%%/*}  #remove everything after the last slash
+  os=${platform%%/*} #remove everything after the last slash
   # Extract the architecture from the platform string
-  arch=${platform##*/}  # Remove everything before the last slash
+  arch=${platform##*/} # Remove everything before the last slash
   make build-examples GOOS="${os}" GOARCH="${arch}"
 done
 
@@ -84,7 +96,7 @@ echo '::endgroup::'
 i=0
 while [[ "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080)" != "200" && $i -lt 30 ]]; do
   sleep 1
-  i=$((i+1))
+  i=$((i + 1))
 done
 
 echo '::group:: check HTML'
@@ -120,7 +132,7 @@ poll_jaeger() {
 
 # Poll Jaeger until trace with desired number of spans is loaded or we timeout.
 span_count=0
-for ((i=1; i<=MAX_RETRIES; i++)); do
+for ((i = 1; i <= MAX_RETRIES; i++)); do
   span_count=$(poll_jaeger "${TRACE_ID}")
 
   if [[ "$span_count" -ge "$EXPECTED_SPANS" ]]; then
